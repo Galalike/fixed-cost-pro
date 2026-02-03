@@ -3,7 +3,8 @@ import {
   Plus, Calendar, PieChart, List, ChevronLeft, ChevronRight, 
   Trash2, Edit2, Check, X, Save, Upload, Download, RefreshCcw,
   Home, Coffee, ShoppingBag, CreditCard, ArrowUp, ArrowDown,
-  Settings, Image as ImageIcon, DollarSign, Globe, Link as LinkIcon
+  Settings, Image as ImageIcon, DollarSign, Globe, Link as LinkIcon,
+  Share2, Copy
 } from 'lucide-react';
 
 // --- Constants & Defaults ---
@@ -23,10 +24,9 @@ const DEFAULT_DATA = [
   { id: 4, name: "ประกันรถยนต์", amount: 12000, category: "necessary", frequency: "yearly", dueMonth: 5, dueDay: 1, startMonth: "2024-01", history: {} }
 ];
 
-// --- Helpers (Fixed Timezone Issue) ---
+// --- Helpers ---
 const formatCurrency = (num) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(num);
 
-// ใช้แบบนี้ชัวร์กว่า ไม่โดนลด Timezone
 const getMonthString = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -63,7 +63,6 @@ const getInstallmentInfo = (cost, viewMonthStr) => {
   const monthsDiff = (viewDate.getFullYear() - startDate.getFullYear()) * 12 + (viewDate.getMonth() - startDate.getMonth());
   const currentInstallment = Math.min(monthsDiff + 1, cost.totalMonths);
   
-  // Calculate remaining debt
   const remainingMonths = cost.totalMonths - (currentInstallment - 1);
   const remainingDebt = remainingMonths * cost.amount;
 
@@ -72,9 +71,7 @@ const getInstallmentInfo = (cost, viewMonthStr) => {
 
 // --- Main Component ---
 export default function App() {
-  // เริ่มต้นด้วยเดือนปัจจุบันเสมอ (ไม่สน LocalStorage)
   const [dataMonth, setDataMonth] = useState(getMonthString(new Date()));
-  
   const [costs, setCosts] = useState([]);
   const [incomes, setIncomes] = useState({});
   const [savings, setSavings] = useState({});
@@ -92,7 +89,6 @@ export default function App() {
         setCosts(parsed.costs || []);
         setIncomes(parsed.incomes || {});
         setSavings(parsed.savings || {});
-        // กูเอาบรรทัด setDataMonth ออกแล้วนะ เปิดมาจะเป็นเดือนปัจจุบันเสมอ
       } catch (e) {
         console.error("Load error", e);
         loadDefault();
@@ -105,7 +101,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       costs, incomes, savings, dataMonth 
-      // ยังเซฟ dataMonth ลงไปเหมือนเดิม เผื่อมึงอยากดึงมาใช้ทีหลัง แต่ตอนโหลดไม่ดึงมาทับ
     }));
   }, [costs, incomes, savings, dataMonth]);
 
@@ -113,7 +108,6 @@ export default function App() {
     setCosts(DEFAULT_DATA);
     setIncomes({});
     setSavings({});
-    // Reset ก็กลับมาเดือนปัจจุบัน
     setDataMonth(getMonthString(new Date()));
   };
 
@@ -138,7 +132,6 @@ export default function App() {
   const pendingAmount = totalCostAmount - paidCostsAmount;
   const netRemaining = currentIncome - currentSavings - totalCostAmount; 
 
-  // Fix: Ensure we correctly manipulate the date object
   const handleMonthChange = (offset) => {
     const date = parseMonthString(dataMonth);
     date.setMonth(date.getMonth() + offset);
@@ -188,11 +181,40 @@ export default function App() {
     setEditingCost(null);
   };
 
-  const handleExport = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ costs, incomes, savings }));
+  // --- 🔥 ฟังก์ชั่น Backup แก้ไขให้รองรับมือถือ ---
+  const handleExport = async () => {
+    const backupData = JSON.stringify({ costs, incomes, savings });
+    const fileName = `fixcost_backup_${dataMonth}.json`;
+
+    // 1. ลองใช้ Web Share API (ส่งไฟล์เข้า Line/Drive)
+    try {
+      const file = new File([backupData], fileName, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "สำรองข้อมูล Fixed Cost Pro",
+          text: `ไฟล์ข้อมูลเดือน ${dataMonth}`,
+        });
+        return; // ถ้าแชร์สำเร็จ จบการทำงาน
+      }
+    } catch (e) {
+      console.warn("Share API failed, trying fallback...", e);
+    }
+
+    // 2. ถ้าแชร์ไม่ได้ ให้ Copy ลง Clipboard แทน
+    try {
+      await navigator.clipboard.writeText(backupData);
+      alert("✅ คัดลอกข้อมูลแล้ว! (Copy)\n\nเนื่องจากข้อจำกัดของมือถือ\n👉 ให้เปิดแอป Note หรือ Line Keep แล้วกด 'วาง (Paste)' เพื่อเก็บข้อมูลครับ");
+      return;
+    } catch (e) {
+      console.warn("Clipboard failed", e);
+    }
+
+    // 3. วิธีดั้งเดิม (สำหรับ PC)
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(backupData);
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `fixcost_backup_${dataMonth}.json`);
+    downloadAnchorNode.setAttribute("download", fileName);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
@@ -211,7 +233,7 @@ export default function App() {
         alert('กู้คืนข้อมูลเรียบร้อย!');
         setIsSettingsOpen(false);
       } catch (err) {
-        alert('ไฟล์ไม่ถูกต้อง');
+        alert('ไฟล์ไม่ถูกต้อง หรือ ข้อมูลเสียหาย');
       }
     };
     reader.readAsText(file);
@@ -452,16 +474,16 @@ export default function App() {
                 </div>
                 
                 <div className="space-y-4">
-                    <button onClick={handleExport} className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium">
-                        <Download size={20} className="text-blue-500" /> สำรองข้อมูล (Backup JSON)
+                    <button onClick={handleExport} className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium active:scale-95 transition-transform">
+                        <Share2 size={20} className="text-blue-500" /> สำรองข้อมูล (Backup)
                     </button>
                     
-                    <label className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium cursor-pointer">
+                    <label className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium cursor-pointer active:scale-95 transition-transform">
                         <Upload size={20} className="text-green-500" /> กู้คืนข้อมูล (Restore)
                         <input type="file" accept=".json" onChange={handleImport} className="hidden" />
                     </label>
 
-                    <button onClick={() => { if(confirm('ล้างข้อมูลทั้งหมด? ย้อนกลับไม่ได้นะ')) loadDefault(); setIsSettingsOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-medium mt-8">
+                    <button onClick={() => { if(confirm('ล้างข้อมูลทั้งหมด? ย้อนกลับไม่ได้นะ')) loadDefault(); setIsSettingsOpen(false); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-medium mt-8 active:scale-95 transition-transform">
                         <RefreshCcw size={20} /> ล้างข้อมูลใหม่หมด (Reset)
                     </button>
                 </div>
@@ -475,14 +497,11 @@ export default function App() {
 // --- Sub Components ---
 
 function CalendarComponent({ activeCosts, dataMonth }) {
-    // Show ONLY current month
-    // Navigation is handled by the main header buttons
     const date = parseMonthString(dataMonth);
     const currentMonthStr = dataMonth;
 
     return (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 animate-fade-in">
-             {/* No title needed here as it's in the header, or we can keep it for context */}
              <div className="flex justify-between items-center mb-4">
                 <span className="text-lg font-bold text-gray-800">
                     {date.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
@@ -517,7 +536,6 @@ function MonthGrid({ activeCosts, monthDate, currentMonthStr }) {
                 {blanks.map(i => <div key={`blank-${i}`} className="h-12"></div>)}
                 {days.map(d => {
                     const costsThisDay = activeCosts.filter(c => c.dueDay === d);
-                    // Check paid status for this specific month
                     const isPaid = costsThisDay.length > 0 && costsThisDay.every(c => c.history?.[currentMonthStr]?.paid);
                     
                     return (
@@ -532,7 +550,6 @@ function MonthGrid({ activeCosts, monthDate, currentMonthStr }) {
                     );
                 })}
             </div>
-            {/* Mini List below calendar */}
             {activeCosts.length > 0 && (
                  <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
                     <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">รายละเอียดในปฏิทิน</h4>
@@ -556,13 +573,11 @@ function MonthGrid({ activeCosts, monthDate, currentMonthStr }) {
 function ChartComponent({ activeCosts, total }) {
     if (activeCosts.length === 0) return <div className="text-center p-10 text-gray-400">ไม่มีข้อมูลกราฟ</div>;
     
-    // Group by category
     const data = Object.keys(CATEGORIES).map(cat => {
         const val = activeCosts.filter(c => c.category === cat).reduce((acc, curr) => acc + Number(curr.amount), 0);
         return { name: CATEGORIES[cat].label, value: val, color: CATEGORIES[cat].chartColor, key: cat };
     }).filter(d => d.value > 0);
 
-    // Calculate SVG paths (Simple Donut)
     let cumulativePercent = 0;
     
     function getCoordinatesForPercent(percent) {
@@ -578,9 +593,9 @@ function ChartComponent({ activeCosts, total }) {
         const [endX, endY] = getCoordinatesForPercent(cumulativePercent);
         const largeArcFlag = percent > 0.5 ? 1 : 0;
         const pathData = [
-            `M ${startX} ${startY}`, // Move
-            `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`, // Arc
-            `L 0 0`, // Line to center
+            `M ${startX} ${startY}`,
+            `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`,
+            `L 0 0`,
         ].join(' ');
         return { ...slice, path: pathData };
     });
@@ -589,7 +604,6 @@ function ChartComponent({ activeCosts, total }) {
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col items-center">
             <h3 className="text-lg font-bold mb-4">สัดส่วนรายจ่ายรายเดือน</h3>
             <div className="relative w-48 h-48 mb-6">
-                 {/* Pure CSS/SVG Chart because libraries are heavy */}
                  <svg viewBox="-1 -1 2 2" className="transform -rotate-90 w-full h-full">
                     {slices.map((slice, i) => (
                         <path key={i} d={slice.path} fill={slice.color} stroke="white" strokeWidth="0.02" />
@@ -627,7 +641,7 @@ function CostModal({ isOpen, onClose, initialData, onSave, onDelete }) {
         name: '', amount: '', category: 'necessary', frequency: 'monthly',
         dueDay: 1, dueMonth: 1, isLimited: false, totalMonths: 10, startMonth: getMonthString(new Date()),
         image: null,
-        urlInput: '' // temp field for url input
+        urlInput: ''
     });
 
     useEffect(() => {
@@ -663,7 +677,7 @@ function CostModal({ isOpen, onClose, initialData, onSave, onDelete }) {
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (file) {
-            if (file.size > 500000) { // 500kb limit
+            if (file.size > 500000) {
                 alert("ไฟล์ใหญ่ไป ขอไม่เกิน 500KB");
                 return;
             }
