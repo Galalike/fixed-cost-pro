@@ -72,7 +72,9 @@ const getInstallmentInfo = (cost, viewMonthStr) => {
 
 // --- Main Component ---
 export default function App() {
+  // เริ่มต้นด้วยเดือนปัจจุบันเสมอ (ไม่สน LocalStorage)
   const [dataMonth, setDataMonth] = useState(getMonthString(new Date()));
+  
   const [costs, setCosts] = useState([]);
   const [incomes, setIncomes] = useState({});
   const [savings, setSavings] = useState({});
@@ -90,7 +92,7 @@ export default function App() {
         setCosts(parsed.costs || []);
         setIncomes(parsed.incomes || {});
         setSavings(parsed.savings || {});
-        setDataMonth(parsed.dataMonth || getMonthString(new Date()));
+        // กูเอาบรรทัด setDataMonth ออกแล้วนะ เปิดมาจะเป็นเดือนปัจจุบันเสมอ
       } catch (e) {
         console.error("Load error", e);
         loadDefault();
@@ -102,7 +104,8 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      costs, incomes, savings, dataMonth
+      costs, incomes, savings, dataMonth 
+      // ยังเซฟ dataMonth ลงไปเหมือนเดิม เผื่อมึงอยากดึงมาใช้ทีหลัง แต่ตอนโหลดไม่ดึงมาทับ
     }));
   }, [costs, incomes, savings, dataMonth]);
 
@@ -110,6 +113,7 @@ export default function App() {
     setCosts(DEFAULT_DATA);
     setIncomes({});
     setSavings({});
+    // Reset ก็กลับมาเดือนปัจจุบัน
     setDataMonth(getMonthString(new Date()));
   };
 
