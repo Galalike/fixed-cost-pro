@@ -37,9 +37,10 @@ jobs:
         run: npx cap sync android
 
       - name: Build APK with Gradle
-        cd android
-        # เพิ่มสิทธิ์ให้ไฟล์ gradlew รันได้
-        run: chmod +x gradlew && ./gradlew assembleDebug
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
